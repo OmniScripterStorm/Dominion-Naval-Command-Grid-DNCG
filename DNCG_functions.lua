@@ -178,4 +178,4 @@ function Funcs.GetTelemetry(myChar, targetTbl)
     return dist, hp
 end
 
-return Func
+return Funcs
