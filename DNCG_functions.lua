@@ -1,147 +1,116 @@
 --[[
     AZUREUS MARITIME DOMINION // DNCG FUNCTION LIBRARY
-    This library contains all essential functions of the Dominion Naval Command Grid(DNCG).
+    This library contains all essential core functions of the Dominion Naval Command Grid(DNCG).
     Author: 1st Research Group 'Stasis λ'
 ]]
 
---[[
-    AZUREUS MARITIME DOMINION // DNCG FUNCTION LIBRARY
-    Version: 3.0 (Hyper-Efficient)
-    Author: 1st Research Group 'Stasis λ'
-]]
+local Funcs = {}
 
-local Lib = {}
+--// CACHED SERVICES & CONSTANTS
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
 
---// 1. OPTIMIZATION UPVALUES (Speed > Readability)
-local v3 = Vector3.new
-local mag = Vector3.zero.Magnitude
-local sock = workspace.CurrentCamera
-local wtvp = sock.WorldToViewportPoint
-local find = game.FindFirstChild
-local getChildren = game.GetChildren
-local math_min = math.min
-local math_abs = math.abs
-
---// 2. CONSTANTS
 local CONST = {
-    Grav = 196.2,
-    AntiGrav = 457.79998779296875,
+    Gravity = Workspace.Gravity,
+    AntiGrav = 457.8, -- Naval Warfare float physics
     Mass = 2.8,
-    VelShip = 710,
-    VelAA = 700,
-    RangeSq = 4000 * 4000 -- Max engagement range squared
+    Velocities = {
+        Ship = 710, -- Shell speed
+        AA = 700    -- Bullet speed
+    },
+    DistSq = {
+        Max = 6000 * 6000,
+        Acquire = 100 * 100 -- Mouse distance squared
+    },
+    NetGravity = Vector3.new(0, -(Workspace.Gravity - (457.8 / 2.8)), 0)
 }
-local NET_GRAV = Vector3.new(0, -(CONST.Grav - (CONST.AntiGrav / CONST.Mass)), 0)
 
---// 3. TELEMETRY & MATH
-function Lib.GetDistSq(posA, posB)
-    local x, y, z = posA.X - posB.X, posA.Y - posB.Y, posA.Z - posB.Z
-    return (x*x) + (y*y) + (z*z)
+--// HELPER: VALIDATE INSTANCE
+function Funcs.Validate(targetTbl)
+    return targetTbl and targetTbl.Root and targetTbl.Root.Parent and targetTbl.Hum and targetTbl.Hum.Health > 0
 end
 
-function Lib.FormatTelemetry(target)
-    if not target or not target.Root then return "NO SIGNAL", "0", "0" end
-    local dist = (sock.CFrame.Position - target.Root.Position).Magnitude
-    local speed = target.Root.AssemblyLinearVelocity.Magnitude
-    return target.Name:upper(), string.format("%.0f", dist), string.format("%.0f", speed)
-end
-
-function Lib.SolveBallistic(origin, targetRoot, mode)
-    if not targetRoot then return Vector3.zero end
-    
-    local speed = (mode == "BALLISTIC") and CONST.VelShip or CONST.VelAA
-    local tPos = targetRoot.Position
-    local tVel = targetRoot.AssemblyLinearVelocity
-    
-    -- AA Mode: Simple Linear Lead
-    if mode == "AA" or mode == "PLANE" then
-        local dist = (tPos - origin).Magnitude
-        return tPos + (tVel * (dist / speed))
-    end
-
-    -- Ballistic Mode: Iterative Gravity Solver
-    local time = (tPos - origin).Magnitude / speed
-    -- 3-Pass Iteration for precision without cost
-    local p1 = tPos + (tVel * time)
-    local p2 = p1 - (0.5 * NET_GRAV * time * time)
-    return p2
-end
-
---// 4. DETECTION LOGIC
--- Returns the "Best" target based on screen proximity
-function Lib.ScanForTargets(myTeam, mode, searchRadius)
+--// CORE: SCANNING (Highly Optimized)
+function Funcs.Scan(localPlayer, camera, mousePos, mode)
     local bestTarget = nil
-    local bestScreenDist = searchRadius -- Pixel radius from mouse
-    local mouse = game:GetService("UserInputService"):GetMouseLocation()
+    local bestDist = CONST.DistSq.Acquire
+    local myTeam = localPlayer.Team
 
-    -- Helper to check a candidate
-    local function Check(model, root, isPlayer)
-        -- Quick Team Check
-        if isPlayer then
-            if model.Team == myTeam then return end
-        else
-            local t = find(model, "Team")
-            if t and t.Value == myTeam.Name then return end
-        end
-
-        -- Screen Check
-        local pos, vis = wtvp(sock, root.Position)
-        if vis then
-            local dx, dy = mouse.X - pos.X, mouse.Y - pos.Y
-            local dist = (dx*dx) + (dy*dy) -- Compare squared distance
-            if dist < (bestScreenDist * bestScreenDist) then
-                bestScreenDist = math.sqrt(dist)
-                bestTarget = {
-                    Instance = model,
-                    Root = root,
-                    Name = model.Name,
-                    IsPlayer = isPlayer
-                }
-            end
-        end
-    end
-
-    -- A. SHIP SCAN (BALLISTIC)
-    if mode == "BALLISTIC" then
-        local raw = workspace:GetChildren() -- Fast access
-        for i = 1, #raw do
-            local m = raw[i]
-            -- Filter generic names to avoid checking clouds/water
-            if m.Name == "Battleship" or m.Name == "Cruiser" or m.Name == "Destroyer" or m.Name == "Carrier" or m.Name == "Submarine" then
-                local hp = find(m, "HP")
-                if hp and hp.Value > 0 then
-                    local r = find(m, "VehicleSeat") or m.PrimaryPart
-                    if r then Check(m, r, false) end
+    -- 1. SCAN PLAYERS (Common to all modes)
+    -- Using GetPlayers is faster than traversing Workspace
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= localPlayer and p.Team ~= myTeam and p.Character then
+            local root = p.Character:FindFirstChild("HumanoidRootPart")
+            local hum = p.Character:FindFirstChild("Humanoid")
+            
+            if root and hum and hum.Health > 0 then
+                local isPlane = false
+                local seat = hum.SeatPart
+                if seat and seat.Parent then
+                    local vName = seat.Parent.Name
+                    if vName:find("Bomber") or vName:find("Plane") then isPlane = true end
                 end
-            end
-        end
 
-    -- B. PLANE SCAN
-    elseif mode == "PLANE" then
-        local players = game:GetService("Players"):GetPlayers()
-        for i = 1, #players do
-            local p = players[i]
-            if p.Character then
-                local hum = find(p.Character, "Humanoid")
-                if hum and hum.Sit and hum.SeatPart and hum.SeatPart.Parent then
-                    local vName = hum.SeatPart.Parent.Name
-                    if vName:find("Plane") or vName:find("Bomber") then
-                        local r = find(hum.SeatPart.Parent, "Part") or hum.SeatPart
-                        Check(p, r, true)
+                -- Mode Filter
+                local valid = false
+                if mode == "BALLISTIC" and not isPlane and not seat then valid = false -- Ballistic focuses ships, not players
+                elseif mode == "AA" and not isPlane then valid = true
+                elseif mode == "PLANE" and isPlane then valid = true 
+                end
+
+                if valid then
+                    local screenPos, onScreen = camera:WorldToViewportPoint(root.Position)
+                    if onScreen then
+                        local dx = screenPos.X - mousePos.X
+                        local dy = screenPos.Y - mousePos.Y
+                        local distSq = (dx*dx) + (dy*dy)
+                        
+                        if distSq < bestDist then
+                            bestDist = distSq
+                            bestTarget = {
+                                Root = root,
+                                Hum = hum,
+                                Name = p.Name,
+                                Type = isPlane and "Plane" or "Player"
+                            }
+                        end
                     end
                 end
             end
         end
-        
-    -- C. AA SCAN (PLAYERS)
-    else
-        local players = game:GetService("Players"):GetPlayers()
-        for i = 1, #players do
-            local p = players[i]
-            if p.Character then
-                local r = find(p.Character, "HumanoidRootPart")
-                local h = find(p.Character, "Humanoid")
-                if r and h and h.Health > 0 then Check(p, r, true) end
+    end
+
+    -- 2. SCAN SHIPS (Ballistic Mode Only)
+    if mode == "BALLISTIC" then
+        -- Naval Warfare puts ships in Workspace. 
+        -- Optimization: Don't iterate ALL workspace. Use tags if possible, or simple check.
+        -- Fallback to standard iteration but check efficiently.
+        for _, m in ipairs(Workspace:GetChildren()) do
+            -- Fast check: Does it have a "Team" value? Most NW ships do.
+            local teamVal = m:FindFirstChild("Team") 
+            if teamVal and teamVal.Value ~= myTeam.Name then
+                local hp = m:FindFirstChild("HP")
+                if hp and hp.Value > 0 then
+                    local root = m.PrimaryPart or m:FindFirstChild("Base") or m:FindFirstChild("Hull")
+                    if root then
+                        local screenPos, onScreen = camera:WorldToViewportPoint(root.Position)
+                        if onScreen then
+                            local dx = screenPos.X - mousePos.X
+                            local dy = screenPos.Y - mousePos.Y
+                            local distSq = (dx*dx) + (dy*dy)
+                            
+                            if distSq < bestDist then
+                                bestDist = distSq
+                                bestTarget = {
+                                    Root = root,
+                                    Hum = {Health = hp.Value, MaxHealth = m:FindFirstChild("MaxHP") and m.MaxHP.Value or 100}, -- Mock Humanoid for interface consistency
+                                    Name = m.Name,
+                                    Type = "Ship"
+                                }
+                            end
+                        end
+                    end
+                end
             end
         end
     end
@@ -149,4 +118,64 @@ function Lib.ScanForTargets(myTeam, mode, searchRadius)
     return bestTarget
 end
 
-return Lib
+--// CORE: MATH SOLVER
+function Funcs.CalculateAim(myChar, targetTbl, mode)
+    if not (myChar and targetTbl.Root) then return nil end
+    
+    local origin = myChar:FindFirstChild("HumanoidRootPart") and myChar.HumanoidRootPart.Position
+    -- Adjust origin if seated (Turret position)
+    local myHum = myChar:FindFirstChild("Humanoid")
+    if myHum and myHum.SeatPart then origin = myHum.SeatPart.Position end
+    if not origin then return nil end
+
+    local tPos = targetTbl.Root.Position
+    local tVel = targetTbl.Root.AssemblyLinearVelocity
+
+    if mode == "BALLISTIC" then
+        -- Projectile Motion w/ Drag & Buoyancy compensation
+        local v = CONST.Velocities.Ship
+        local g = CONST.NetGravity
+        
+        -- Cap velocity for ships (Prediction Cap)
+        if tVel.Magnitude > 150 then tVel = tVel.Unit * 150 end
+        
+        -- Iterative Solver (3 passes is enough for Roblox)
+        local time = (tPos - origin).Magnitude / v
+        for _ = 1, 3 do
+            local predPos = tPos + (tVel * time)
+            time = (predPos - origin).Magnitude / v
+        end
+        
+        local predPos = tPos + (tVel * time)
+        local drop = 0.5 * g * time * time
+        return predPos - drop -- Subtract the gravity vector (which is negative) -> adds drop
+        
+    else
+        -- Linear Lead (AA / Planes)
+        local v = CONST.Velocities.AA
+        
+        -- Clamp Plane erratic movement
+        if mode == "PLANE" and tVel.Magnitude > 300 then tVel = tVel.Unit * 300 end
+        
+        local dist = (tPos - origin).Magnitude
+        local time = dist / v
+        return tPos + (tVel * time)
+    end
+end
+
+function Funcs.GetTelemetry(myChar, targetTbl)
+    if not (myChar and targetTbl) then return 0, 0 end
+    local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return 0, 0 end
+    
+    local dist = (myRoot.Position - targetTbl.Root.Position).Magnitude
+    local hp = 0
+    if targetTbl.Hum then
+        local max = targetTbl.Hum.MaxHealth or 100
+        hp = math.clamp(targetTbl.Hum.Health / max, 0, 1)
+    end
+    
+    return dist, hp
+end
+
+return Func
