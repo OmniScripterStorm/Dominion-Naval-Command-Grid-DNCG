@@ -6,6 +6,7 @@
 
 local Funcs = {}
 
+--// CACHED SERVICES
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
@@ -15,67 +16,19 @@ local SHELL_MASS = 2.8
 local NET_ACCEL_Y = -(Workspace.Gravity - (RAW_ANTIGRAV / SHELL_MASS))
 
 local CONST = {
-    Velocities = { Ship = 710, AA = 700 },
-    DistSq = { Acquire = 100 * 100 },
+    Velocities = {
+        Ship = 710,
+        AA = 700
+    },
+    DistSq = {
+        Acquire = 100 * 100
+    },
     GravityVec = Vector3.new(0, NET_ACCEL_Y, 0)
 }
 
---// HELPER: FIND TRUE FIRING ORIGIN
-function Funcs.GetFiringOrigin(myChar)
-    if not myChar then return nil end
-    local hum = myChar:FindFirstChild("Humanoid")
-    local origin = nil
-
-    -- 1. Default to RootPart
-    if myChar:FindFirstChild("HumanoidRootPart") then
-        origin = myChar.HumanoidRootPart.Position
-    end
-
-    -- 2. If Seated, Check for Main Battery
-    if hum and hum.SeatPart then
-        local vehicle = hum.SeatPart.Parent
-        origin = hum.SeatPart.Position -- Default to seat if no turret found
-        
-        if vehicle then
-            local seatCF = hum.SeatPart.CFrame
-            local bestDist = 0
-            
-            -- Scan children for Main Turrets
-            for _, child in ipairs(vehicle:GetChildren()) do
-                -- Strict Name Check: "Turret"
-                if child.Name == "Turret" then
-                    
-                    -- Exclude AA Guns (Any turret containing "AA" object)
-                    if not child:FindFirstChild("AA") then
-                        
-                        -- Determine Position (Handle both Model and Part turrets)
-                        local turretPos = nil
-                        if child:IsA("BasePart") then
-                            turretPos = child.Position
-                        elseif child:IsA("Model") then
-                            -- Use PrimaryPart, or Pivot, or first Part found
-                            if child.PrimaryPart then turretPos = child.PrimaryPart.Position
-                            else turretPos = child:GetPivot().Position end
-                        end
-                        
-                        if turretPos then
-                            -- Check relative position to find the Forward Main Battery
-                            -- We convert world pos to object space relative to the seat
-                            local relPos = seatCF:PointToObjectSpace(turretPos)
-                            
-                            -- We assume the main gun is usually Forward (-Z) and slightly Up (+Y)
-                            -- We pick the one furthest forward to ensure barrel clearance
-                            if relPos.Z < 0 and math.abs(relPos.Z) > bestDist then
-                                bestDist = math.abs(relPos.Z)
-                                origin = turretPos
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return origin
+--// HELPER: VALIDATE
+function Funcs.Validate(targetTbl)
+    return targetTbl and targetTbl.Root and targetTbl.Root.Parent and targetTbl.Hum and targetTbl.Hum.Health > 0
 end
 
 --// CORE: SCANNING
@@ -105,13 +58,17 @@ function Funcs.Scan(localPlayer, camera, mousePos, mode)
                 elseif mode == "PLANE" and isPlane then valid = true 
                 end
 
-                if valid and (root.Position - camPos).Magnitude < 8000 then
-                    local screenPos, onScreen = camera:WorldToViewportPoint(root.Position)
-                    if onScreen then
-                        local dx, dy = screenPos.X - mousePos.X, screenPos.Y - mousePos.Y
-                        if (dx*dx + dy*dy) < bestDist then
-                            bestDist = (dx*dx + dy*dy)
-                            bestTarget = {Root = root, Hum = hum, Name = p.Name, Type = isPlane and "Plane" or "Player"}
+                if valid then
+                    -- Optimization: Distance Check before WTVP
+                    if (root.Position - camPos).Magnitude < 8000 then
+                        local screenPos, onScreen = camera:WorldToViewportPoint(root.Position)
+                        if onScreen then
+                            local dx = screenPos.X - mousePos.X
+                            local dy = screenPos.Y - mousePos.Y
+                            if (dx*dx + dy*dy) < bestDist then
+                                bestDist = (dx*dx + dy*dy)
+                                bestTarget = {Root = root, Hum = hum, Name = p.Name, Type = isPlane and "Plane" or "Player"}
+                            end
                         end
                     end
                 end
@@ -131,7 +88,8 @@ function Funcs.Scan(localPlayer, camera, mousePos, mode)
                         if (root.Position - camPos).Magnitude < 12000 then
                             local screenPos, onScreen = camera:WorldToViewportPoint(root.Position)
                             if onScreen then
-                                local dx, dy = screenPos.X - mousePos.X, screenPos.Y - mousePos.Y
+                                local dx = screenPos.X - mousePos.X
+                                local dy = screenPos.Y - mousePos.Y
                                 if (dx*dx + dy*dy) < bestDist then
                                     bestDist = (dx*dx + dy*dy)
                                     bestTarget = {
@@ -152,13 +110,13 @@ function Funcs.Scan(localPlayer, camera, mousePos, mode)
     return bestTarget
 end
 
---// CORE: MATH SOLVER
+--// CORE: HIGH-PRECISION SOLVER
 function Funcs.CalculateAim(myChar, targetTbl, mode)
     if not (myChar and targetTbl.Root) then return nil end
     
-    -- [PARALLAX CORRECTION]
-    -- Finds the specific "Turret" object excluding "AA"
-    local origin = Funcs.GetFiringOrigin(myChar)
+    local origin = myChar:FindFirstChild("HumanoidRootPart") and myChar.HumanoidRootPart.Position
+    local myHum = myChar:FindFirstChild("Humanoid")
+    if myHum and myHum.SeatPart then origin = myHum.SeatPart.Position end
     if not origin then return nil end
 
     local tPos = targetTbl.Root.Position
@@ -168,23 +126,33 @@ function Funcs.CalculateAim(myChar, targetTbl, mode)
         local v = CONST.Velocities.Ship
         local g = CONST.GravityVec
         
+        -- Cap Velocity to prevent erratic prediction on glitched ships
         if tVel.Magnitude > 160 then tVel = tVel.Unit * 160 end
         
+        -- [[ PRECISION SOLVER V2 ]]
+        -- 1. Initial Time estimate
         local time = (tPos - origin).Magnitude / v
         
-        -- High Precision Iteration (8-pass)
+        -- 2. High-Pass Iteration (Increased from 3 to 8 steps)
+        -- This converges the solution much closer to the true intercept point
         for _ = 1, 8 do
             local futurePos = tPos + (tVel * time)
-            futurePos = futurePos + (tVel * 0.06) -- Latency Comp
+            -- Add slight latency compensation (approx 60ms processing/ping)
+            futurePos = futurePos + (tVel * 0.06) 
             time = (futurePos - origin).Magnitude / v
         end
         
         local predPos = tPos + (tVel * time)
+        
+        -- 3. Arc Calculation
+        -- Displacement = V0*t + 0.5*a*t^2
+        -- We need to find AimPosition (V0*t)
+        -- AimPosition = Displacement - 0.5*a*t^2
         local drop = 0.5 * g * time * time
         return predPos - drop 
         
     else
-        -- AA / Plane
+        -- Linear Lead
         local v = CONST.Velocities.AA
         if mode == "PLANE" and tVel.Magnitude > 350 then tVel = tVel.Unit * 350 end
         local dist = (tPos - origin).Magnitude
@@ -193,15 +161,11 @@ function Funcs.CalculateAim(myChar, targetTbl, mode)
     end
 end
 
---// UTILITY: VALIDATE & TELEMETRY
-function Funcs.Validate(targetTbl)
-    return targetTbl and targetTbl.Root and targetTbl.Root.Parent and targetTbl.Hum and targetTbl.Hum.Health > 0
-end
-
 function Funcs.GetTelemetry(myChar, targetTbl)
     if not (myChar and targetTbl) then return 0, 0 end
     local myRoot = myChar:FindFirstChild("HumanoidRootPart")
     if not myRoot then return 0, 0 end
+    
     local dist = (myRoot.Position - targetTbl.Root.Position).Magnitude
     local hp = 0
     if targetTbl.Hum then
