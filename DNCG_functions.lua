@@ -6,122 +6,154 @@
 
 local Lib = {}
 
---// CACHED SERVICES
-local Workspace = game:GetService("Workspace")
-local Camera = Workspace.CurrentCamera
-local GuiService = game:GetService("GuiService")
-local UserInputService = game:GetService("UserInputService")
+--// 1. OPTIMIZATION UPVALUES
+local v3 = Vector3.new
+local sock = workspace.CurrentCamera
+local wtvp = sock.WorldToViewportPoint
+local find = game.FindFirstChild
+local findFirstChildIsA = game.FindFirstChildWhichIsA
+local getChildren = game.GetChildren
+local uis = game:GetService("UserInputService")
+local guiService = game:GetService("GuiService")
 
---// CONSTANTS
+--// 2. CONSTANTS
 local CONST = {
     Grav = 196.2,
-    AntiGrav = 457.8,
+    AntiGrav = 457.79998779296875,
     Mass = 2.8,
     VelShip = 710,
     VelAA = 700
 }
 local NET_GRAV = Vector3.new(0, -(CONST.Grav - (CONST.AntiGrav / CONST.Mass)), 0)
 
---// MATH HELPERS
+--// 3. UTILITY: VISUAL CENTER
+-- Returns the best part to draw UI over
+function Lib.GetVisualRoot(model)
+    if not model then return nil end
+    
+    -- For Players: RootPart is good
+    local hum = find(model, "Humanoid")
+    if hum then return find(model, "HumanoidRootPart") or find(model, "Torso") end
+    
+    -- For Ships: VehicleSeat is often low/buried. Try to find a larger structure part if possible, otherwise Seat.
+    local seat = find(model, "VehicleSeat") or find(model, "Seat") or find(model, "DriverSeat")
+    if seat then return seat end
+    
+    return model.PrimaryPart or findFirstChildIsA(model, "BasePart")
+end
+
+--// 4. TELEMETRY
+function Lib.FormatTelemetry(target)
+    if not target or not target.Root then return "NO SIGNAL", "0", "0" end
+    local dist = (sock.CFrame.Position - target.Root.Position).Magnitude
+    local vel = target.Root.AssemblyLinearVelocity
+    local speed = math.sqrt(vel.X^2 + vel.Y^2 + vel.Z^2) -- True magnitude
+    return target.Name:upper(), string.format("%.0f", dist), string.format("%.0f", speed)
+end
+
 function Lib.SolveBallistic(origin, targetRoot, mode)
     if not targetRoot then return Vector3.zero end
+    
     local speed = (mode == "BALLISTIC") and CONST.VelShip or CONST.VelAA
     local tPos = targetRoot.Position
     local tVel = targetRoot.AssemblyLinearVelocity
-
-    -- Linear Prediction (AA/Plane)
-    if mode ~= "BALLISTIC" then
+    
+    -- AA/Plane: Linear Lead
+    if mode == "AA" or mode == "PLANE" then
         local dist = (tPos - origin).Magnitude
         return tPos + (tVel * (dist / speed))
     end
 
-    -- Ballistic Arc (Ship)
+    -- Ballistic: Gravity Iteration
     local time = (tPos - origin).Magnitude / speed
-    local p1 = tPos + (tVel * time) 
+    local p1 = tPos + (tVel * time)
     local p2 = p1 - (0.5 * NET_GRAV * time * time)
     return p2
 end
 
-function Lib.FormatTelemetry(target)
-    if not target or not target.Root then return "N/A", "0", "0" end
-    local dist = (Camera.CFrame.Position - target.Root.Position).Magnitude
-    local speed = target.Root.AssemblyLinearVelocity.Magnitude
-    return target.Name:sub(1,10):upper(), string.format("%.0f", dist), string.format("%.0f", speed)
-end
-
---// TARGET SCANNER
+--// 5. DETECTION LOGIC (FIXED OFFSET)
 function Lib.ScanForTargets(myTeam, mode, searchRadius)
-    local best = nil
-    local bestDist = searchRadius * searchRadius -- Squared comparison
+    local bestTarget = nil
+    local bestScreenDistSq = searchRadius * searchRadius
     
-    -- Get Mouse and account for GUI Inset (TopBar)
-    local mouse = UserInputService:GetMouseLocation()
-    -- NOTE: GetMouseLocation includes TopBar. WorldToViewportPoint includes TopBar.
-    -- They match in coordinate space.
+    -- FIX: Account for the TopBar inset (36px usually)
+    local inset = guiService:GetGuiInset() 
+    local mouseRaw = uis:GetMouseLocation()
+    local mouseX, mouseY = mouseRaw.X - inset.X, mouseRaw.Y - inset.Y
 
     local function Check(model, root, isPlayer)
         -- Team Check
         if isPlayer then
             if model.Team == myTeam then return end
         else
-            local t = model:FindFirstChild("Team")
+            local t = find(model, "Team")
             if t and t.Value == myTeam.Name then return end
         end
 
-        -- Screen Math
-        local pos, vis = Camera:WorldToViewportPoint(root.Position)
+        -- Screen Check
+        local pos, vis = wtvp(sock, root.Position)
         if vis then
-            local dx = mouse.X - pos.X
-            local dy = mouse.Y - pos.Y
+            local dx = mouseX - pos.X
+            local dy = mouseY - pos.Y
             local distSq = (dx*dx) + (dy*dy)
             
-            if distSq < bestDist then
-                bestDist = distSq
-                best = {
+            if distSq < bestScreenDistSq then
+                bestScreenDistSq = distSq
+                bestTarget = {
                     Instance = model,
                     Root = root,
                     Name = model.Name,
-                    ScreenPos = Vector2.new(pos.X, pos.Y) -- Return this to Kernel
+                    IsPlayer = isPlayer
                 }
             end
         end
     end
 
-    -- 1. BALLISTIC (Ships)
+    -- A. BALLISTIC (SHIPS)
     if mode == "BALLISTIC" then
-        for _, m in ipairs(Workspace:GetChildren()) do
-            if m:FindFirstChild("HP") and m.HP.Value > 0 then
-                local r = m:FindFirstChild("VehicleSeat") or m.PrimaryPart
-                if r then Check(m, r, false) end
+        local raw = workspace:GetChildren()
+        for i = 1, #raw do
+            local m = raw[i]
+            -- Check for HP to ensure it's a destroyable ship
+            if find(m, "HP") and find(m, "MaxHP") then
+                 local root = Lib.GetVisualRoot(m)
+                 if root then Check(m, root, false) end
             end
         end
-    
-    -- 2. PLANE
+
+    -- B. PLANE
     elseif mode == "PLANE" then
-        for _, p in ipairs(game:GetService("Players"):GetPlayers()) do
+        local players = game:GetService("Players"):GetPlayers()
+        for i = 1, #players do
+            local p = players[i]
             if p.Character then
-                local hum = p.Character:FindFirstChild("Humanoid")
+                local hum = find(p.Character, "Humanoid")
                 if hum and hum.Sit and hum.SeatPart and hum.SeatPart.Parent then
                     local vName = hum.SeatPart.Parent.Name
                     if vName:find("Plane") or vName:find("Bomber") then
-                        Check(p, hum.SeatPart, true)
+                        -- Target the Plane Model, not the Player
+                        local plane = hum.SeatPart.Parent
+                        local root = plane.PrimaryPart or hum.SeatPart
+                        Check(p, root, true)
                     end
                 end
             end
         end
-
-    -- 3. AA (Infantry)
-    else 
-        for _, p in ipairs(game:GetService("Players"):GetPlayers()) do
+        
+    -- C. AA (INFANTRY)
+    else
+        local players = game:GetService("Players"):GetPlayers()
+        for i = 1, #players do
+            local p = players[i]
             if p.Character then
-                local r = p.Character:FindFirstChild("HumanoidRootPart")
-                local h = p.Character:FindFirstChild("Humanoid")
-                if r and h and h.Health > 0 then Check(p, r, true) end
+                local root = find(p.Character, "HumanoidRootPart")
+                local hum = find(p.Character, "Humanoid")
+                if root and hum and hum.Health > 0 then Check(p, root, true) end
             end
         end
     end
 
-    return best
+    return bestTarget
 end
 
 return Lib
