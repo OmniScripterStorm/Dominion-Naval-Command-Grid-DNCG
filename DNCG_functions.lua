@@ -4,39 +4,48 @@
     Author: 1st Research Group 'Stasis λ'
 ]]
 
+--[[
+    AZUREUS MARITIME DOMINION // DNCG FUNCTION LIBRARY (REV 2 - PRECISION BALLISTICS)
+    Author: 1st Research Group 'Stasis λ'
+]]
+
 local Funcs = {}
 
---// CACHED SERVICES & CONSTANTS
+--// CACHED SERVICES
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
+--// PHYSICS CONSTANTS
+-- We use the exact raw float value from the game's memory to prevent drift
+local RAW_ANTIGRAV = 457.79998779296875 
+local SHELL_MASS = 2.8
+local NET_ACCEL_Y = -(Workspace.Gravity - (RAW_ANTIGRAV / SHELL_MASS))
+
 local CONST = {
-    Gravity = Workspace.Gravity,
-    AntiGrav = 457.8, -- Naval Warfare float physics
-    Mass = 2.8,
     Velocities = {
-        Ship = 710, -- Shell speed
-        AA = 700    -- Bullet speed
+        Ship = 710,
+        AA = 700
     },
     DistSq = {
-        Max = 6000 * 6000,
-        Acquire = 100 * 100 -- Mouse distance squared
+        Acquire = 100 * 100
     },
-    NetGravity = Vector3.new(0, -(Workspace.Gravity - (457.8 / 2.8)), 0)
+    -- Pre-calculated Gravity Vector
+    GravityVec = Vector3.new(0, NET_ACCEL_Y, 0)
 }
 
---// HELPER: VALIDATE INSTANCE
+--// HELPER: VALIDATE
 function Funcs.Validate(targetTbl)
     return targetTbl and targetTbl.Root and targetTbl.Root.Parent and targetTbl.Hum and targetTbl.Hum.Health > 0
 end
 
---// CORE: SCANNING (Highly Optimized)
+--// CORE: SCANNING
 function Funcs.Scan(localPlayer, camera, mousePos, mode)
     local bestTarget = nil
     local bestDist = CONST.DistSq.Acquire
     local myTeam = localPlayer.Team
+    local camPos = camera.CFrame.Position
 
-    -- 1. SCAN PLAYERS (Common to all modes)
+    -- 1. PLAYER SCAN
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= localPlayer and p.Team ~= myTeam and p.Character then
             local root = p.Character:FindFirstChild("HumanoidRootPart")
@@ -50,28 +59,23 @@ function Funcs.Scan(localPlayer, camera, mousePos, mode)
                     if vName:find("Bomber") or vName:find("Plane") then isPlane = true end
                 end
 
-                -- Mode Filter
                 local valid = false
-                if mode == "BALLISTIC" and not isPlane and not seat then valid = false -- Ballistic focuses ships, not players
+                if mode == "BALLISTIC" and not isPlane and not seat then valid = false
                 elseif mode == "AA" and not isPlane then valid = true
                 elseif mode == "PLANE" and isPlane then valid = true 
                 end
 
                 if valid then
-                    local screenPos, onScreen = camera:WorldToViewportPoint(root.Position)
-                    if onScreen then
-                        local dx = screenPos.X - mousePos.X
-                        local dy = screenPos.Y - mousePos.Y
-                        local distSq = (dx*dx) + (dy*dy)
-                        
-                        if distSq < bestDist then
-                            bestDist = distSq
-                            bestTarget = {
-                                Root = root,
-                                Hum = hum,
-                                Name = p.Name,
-                                Type = isPlane and "Plane" or "Player"
-                            }
+                    -- Optimization: Distance Check before WTVP
+                    if (root.Position - camPos).Magnitude < 8000 then
+                        local screenPos, onScreen = camera:WorldToViewportPoint(root.Position)
+                        if onScreen then
+                            local dx = screenPos.X - mousePos.X
+                            local dy = screenPos.Y - mousePos.Y
+                            if (dx*dx + dy*dy) < bestDist then
+                                bestDist = (dx*dx + dy*dy)
+                                bestTarget = {Root = root, Hum = hum, Name = p.Name, Type = isPlane and "Plane" or "Player"}
+                            end
                         end
                     end
                 end
@@ -79,30 +83,29 @@ function Funcs.Scan(localPlayer, camera, mousePos, mode)
         end
     end
 
-    -- 2. SCAN SHIPS (Ballistic Mode Only)
+    -- 2. SHIP SCAN (BALLISTIC)
     if mode == "BALLISTIC" then
         for _, m in ipairs(Workspace:GetChildren()) do
-            -- Fast check: Does it have a "Team" value? Most NW ships do.
             local teamVal = m:FindFirstChild("Team") 
             if teamVal and teamVal.Value ~= myTeam.Name then
                 local hp = m:FindFirstChild("HP")
                 if hp and hp.Value > 0 then
                     local root = m.PrimaryPart or m:FindFirstChild("Base") or m:FindFirstChild("Hull")
                     if root then
-                        local screenPos, onScreen = camera:WorldToViewportPoint(root.Position)
-                        if onScreen then
-                            local dx = screenPos.X - mousePos.X
-                            local dy = screenPos.Y - mousePos.Y
-                            local distSq = (dx*dx) + (dy*dy)
-                            
-                            if distSq < bestDist then
-                                bestDist = distSq
-                                bestTarget = {
-                                    Root = root,
-                                    Hum = {Health = hp.Value, MaxHealth = m:FindFirstChild("MaxHP") and m.MaxHP.Value or 100}, -- Mock Humanoid
-                                    Name = m.Name,
-                                    Type = "Ship"
-                                }
+                        if (root.Position - camPos).Magnitude < 12000 then
+                            local screenPos, onScreen = camera:WorldToViewportPoint(root.Position)
+                            if onScreen then
+                                local dx = screenPos.X - mousePos.X
+                                local dy = screenPos.Y - mousePos.Y
+                                if (dx*dx + dy*dy) < bestDist then
+                                    bestDist = (dx*dx + dy*dy)
+                                    bestTarget = {
+                                        Root = root, 
+                                        Hum = {Health = hp.Value, MaxHealth = m:FindFirstChild("MaxHP") and m.MaxHP.Value or 100}, 
+                                        Name = m.Name, 
+                                        Type = "Ship"
+                                    }
+                                end
                             end
                         end
                     end
@@ -114,12 +117,11 @@ function Funcs.Scan(localPlayer, camera, mousePos, mode)
     return bestTarget
 end
 
---// CORE: MATH SOLVER
+--// CORE: HIGH-PRECISION SOLVER
 function Funcs.CalculateAim(myChar, targetTbl, mode)
     if not (myChar and targetTbl.Root) then return nil end
     
     local origin = myChar:FindFirstChild("HumanoidRootPart") and myChar.HumanoidRootPart.Position
-    -- Adjust origin if seated (Turret position)
     local myHum = myChar:FindFirstChild("Humanoid")
     if myHum and myHum.SeatPart then origin = myHum.SeatPart.Position end
     if not origin then return nil end
@@ -128,31 +130,38 @@ function Funcs.CalculateAim(myChar, targetTbl, mode)
     local tVel = targetTbl.Root.AssemblyLinearVelocity
 
     if mode == "BALLISTIC" then
-        -- Projectile Motion w/ Drag & Buoyancy compensation
         local v = CONST.Velocities.Ship
-        local g = CONST.NetGravity
+        local g = CONST.GravityVec
         
-        -- Cap velocity for ships (Prediction Cap)
-        if tVel.Magnitude > 150 then tVel = tVel.Unit * 150 end
+        -- Cap Velocity to prevent erratic prediction on glitched ships
+        if tVel.Magnitude > 160 then tVel = tVel.Unit * 160 end
         
-        -- Iterative Solver
+        -- [[ PRECISION SOLVER V2 ]]
+        -- 1. Initial Time estimate
         local time = (tPos - origin).Magnitude / v
-        for _ = 1, 3 do
-            local predPos = tPos + (tVel * time)
-            time = (predPos - origin).Magnitude / v
+        
+        -- 2. High-Pass Iteration (Increased from 3 to 8 steps)
+        -- This converges the solution much closer to the true intercept point
+        for _ = 1, 8 do
+            local futurePos = tPos + (tVel * time)
+            -- Add slight latency compensation (approx 60ms processing/ping)
+            futurePos = futurePos + (tVel * 0.06) 
+            time = (futurePos - origin).Magnitude / v
         end
         
         local predPos = tPos + (tVel * time)
+        
+        -- 3. Arc Calculation
+        -- Displacement = V0*t + 0.5*a*t^2
+        -- We need to find AimPosition (V0*t)
+        -- AimPosition = Displacement - 0.5*a*t^2
         local drop = 0.5 * g * time * time
         return predPos - drop 
         
     else
-        -- Linear Lead (AA / Planes)
+        -- Linear Lead
         local v = CONST.Velocities.AA
-        
-        -- Clamp Plane erratic movement
-        if mode == "PLANE" and tVel.Magnitude > 300 then tVel = tVel.Unit * 300 end
-        
+        if mode == "PLANE" and tVel.Magnitude > 350 then tVel = tVel.Unit * 350 end
         local dist = (tPos - origin).Magnitude
         local time = dist / v
         return tPos + (tVel * time)
@@ -170,7 +179,6 @@ function Funcs.GetTelemetry(myChar, targetTbl)
         local max = targetTbl.Hum.MaxHealth or 100
         hp = math.clamp(targetTbl.Hum.Health / max, 0, 1)
     end
-    
     return dist, hp
 end
 
