@@ -1,3 +1,9 @@
+--[[
+    AZUREUS MARITIME DOMINION // DNCG TARGETING LIBRARY
+    This library contains all visual targeting functions of the Dominion Naval Command Grid(DNCG).
+    Author: 1st Research Group 'Stasis λ'
+]]
+
 local TargetLib = {}
 local Camera = nil
 
