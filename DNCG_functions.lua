@@ -37,7 +37,6 @@ function Funcs.Scan(localPlayer, camera, mousePos, mode)
     local myTeam = localPlayer.Team
 
     -- 1. SCAN PLAYERS (Common to all modes)
-    -- Using GetPlayers is faster than traversing Workspace
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= localPlayer and p.Team ~= myTeam and p.Character then
             local root = p.Character:FindFirstChild("HumanoidRootPart")
@@ -82,9 +81,6 @@ function Funcs.Scan(localPlayer, camera, mousePos, mode)
 
     -- 2. SCAN SHIPS (Ballistic Mode Only)
     if mode == "BALLISTIC" then
-        -- Naval Warfare puts ships in Workspace. 
-        -- Optimization: Don't iterate ALL workspace. Use tags if possible, or simple check.
-        -- Fallback to standard iteration but check efficiently.
         for _, m in ipairs(Workspace:GetChildren()) do
             -- Fast check: Does it have a "Team" value? Most NW ships do.
             local teamVal = m:FindFirstChild("Team") 
@@ -103,7 +99,7 @@ function Funcs.Scan(localPlayer, camera, mousePos, mode)
                                 bestDist = distSq
                                 bestTarget = {
                                     Root = root,
-                                    Hum = {Health = hp.Value, MaxHealth = m:FindFirstChild("MaxHP") and m.MaxHP.Value or 100}, -- Mock Humanoid for interface consistency
+                                    Hum = {Health = hp.Value, MaxHealth = m:FindFirstChild("MaxHP") and m.MaxHP.Value or 100}, -- Mock Humanoid
                                     Name = m.Name,
                                     Type = "Ship"
                                 }
@@ -139,7 +135,7 @@ function Funcs.CalculateAim(myChar, targetTbl, mode)
         -- Cap velocity for ships (Prediction Cap)
         if tVel.Magnitude > 150 then tVel = tVel.Unit * 150 end
         
-        -- Iterative Solver (3 passes is enough for Roblox)
+        -- Iterative Solver
         local time = (tPos - origin).Magnitude / v
         for _ = 1, 3 do
             local predPos = tPos + (tVel * time)
@@ -148,7 +144,7 @@ function Funcs.CalculateAim(myChar, targetTbl, mode)
         
         local predPos = tPos + (tVel * time)
         local drop = 0.5 * g * time * time
-        return predPos - drop -- Subtract the gravity vector (which is negative) -> adds drop
+        return predPos - drop 
         
     else
         -- Linear Lead (AA / Planes)
