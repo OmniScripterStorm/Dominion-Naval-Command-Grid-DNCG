@@ -21,8 +21,10 @@ local CONST = {
 
 local ATS_CONST = {
     MAX_RANGE = 2500,
-    RANGE_SCALER = 500
+    RANGE_SCALER = 250,
+    VERTICAL_ENGAGEMENT_LIMIT = -100
 }
+
 
 local BTV_MATRIX = {
     ["Hijacker"] = 1.00,
@@ -73,9 +75,12 @@ end
 function Funcs.ScanAllTargets(localPlayer)
     local allTargets = {}
     local myTeam = localPlayer.Team
-    local myPos = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") and localPlayer.Character.HumanoidRootPart.Position
+    local myRoot = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+    
+    if not myRoot then return allTargets end
 
-    if not myPos then return allTargets end
+    local myPos = myRoot.Position
+    local myYPos = myPos.Y
 
     -- 1. Player Scan (for AA/Plane/Hijackers)
     for _, p in ipairs(Players:GetPlayers()) do
@@ -84,24 +89,30 @@ function Funcs.ScanAllTargets(localPlayer)
             local hum = p.Character:FindFirstChild("Humanoid")
             
             if root and hum and hum.Health > 0 then
+                -- [NEW FILTER] Ignore targets far below our current Y-position
+                if root.Position.Y < myYPos + ATS_CONST.VERTICAL_ENGAGEMENT_LIMIT and (root.Position.Y < -200) then continue end
+
                 local isPlane = false
                 local seat = hum.SeatPart
+                local typeName = "Player"
+
                 if seat and seat.Parent then
                     local vName = seat.Parent.Name
-                    if vName:find("Bomber") or vName:find("Plane") then isPlane = true end
-                    -- Attempt to classify Plane types for BTV
-                    if vName:find("Heavy Bomber") then
-                        vName = "Heavy Bomber"
-                    elseif vName:find("Torpedo") then
-                        vName = "Torpedo Bomber"
-                    else
-                        vName = "Bomber"
+                    if vName:find("Bomber") or vName:find("Plane") then
+                        isPlane = true
+                        if vName:find("Heavy Bomber") then
+                            typeName = "Heavy Bomber"
+                        elseif vName:find("Torpedo") then
+                            typeName = "Torpedo Bomber"
+                        else
+                            typeName = "Bomber"
+                        end
                     end
                 end
 
                 table.insert(allTargets, {
                     Root = root, Hum = hum, Name = p.Name, 
-                    Type = isPlane and vName or "Player"
+                    Type = isPlane and typeName or "Player"
                 })
             end
         end
@@ -115,7 +126,9 @@ function Funcs.ScanAllTargets(localPlayer)
             if hp and hp.Value > 0 then
                 local root = m.PrimaryPart or m:FindFirstChild("Base") or m:FindFirstChild("Hull")
                 if root then
-                    -- Ship type is extracted from Name (e.g., "Battleship-Name")
+                    -- [NEW FILTER] Ignore targets below our current Y-position
+                    if root.Position.Y < myYPos + ATS_CONST.VERTICAL_ENGAGEMENT_LIMIT and (root.Position.Y < -200) then continue end
+
                     local shipClass = string.match(m.Name, "(%a+)") 
                     table.insert(allTargets, {
                         Root = root,
