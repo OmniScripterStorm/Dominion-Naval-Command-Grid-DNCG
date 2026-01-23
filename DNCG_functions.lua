@@ -4,11 +4,6 @@
     Author: 1st Research Group 'Stasis λ'
 ]]
 
---[[
-    AZUREUS MARITIME DOMINION // DNCG FUNCTION LIBRARY
-    Core logic for Ballistics, Targeting, and Scanning.
-]]
-
 local Funcs = {}
 
 local Players = game:GetService("Players")
