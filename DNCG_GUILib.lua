@@ -9,11 +9,11 @@ local GUILib = {}
 --// THEME & CONSTANTS
 GUILib.Theme = { Background = Color3.fromHex("0D1B2A"), Primary = Color3.fromHex("1B263B"), Accent = Color3.fromHex("415A77"), Text = Color3.fromHex("E0E1DD"), Enemy = Color3.fromHex("FF595E"), Friendly = Color3.fromHex("80FFDB"), Self = Color3.fromHex("00F5D4"), Locked = Color3.fromHex("9EF01A") }
 local RADAR_DIAMETER = 250
-local COAT_OF_ARMS_ID = "rbxassetid://7374826931" -- [FIX] Corrected Asset ID
+-- [CRITICAL FIX] Corrected the full 14-digit Asset ID
+local COAT_OF_ARMS_ID = "rbxassetid://73748269312467"
 
 local function Create(class, props) local i = Instance.new(class); for p,v in pairs(props) do if p=="Children" then for _,c in ipairs(v) do c.Parent=i end else i[p]=v end end; return i end
 
--- [FIX] Radar blip object pooling for performance
 local radarBlipPool = { Active = {}, Inactive = {} }
 local function getRadarBlip(parent)
     local blip = table.remove(radarBlipPool.Inactive)
@@ -48,7 +48,6 @@ end
 
 function GUILib:_buildTelemetry(parent)
     local t = {}; t.frame = Create("Frame", { Name = "TelemetryFrame", Parent = parent, Visible = false, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0), Size = UDim2.fromOffset(280, 130), BackgroundColor3 = self.Theme.Background, BackgroundTransparency = 0.2, Children = { Create("UIStroke", {Color = self.Theme.Accent}), Create("UICorner", {CornerRadius = UDim.new(0, 4)}), Create("UIPadding", {PaddingLeft=UDim.new(0,10), PaddingTop=UDim.new(0,10), PaddingRight=UDim.new(0,10)}), Create("UIListLayout", {Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder}) }}); Create("TextLabel", { Parent = t.frame, LayoutOrder = 1, Size = UDim2.new(1,0,0,20), Font = Enum.Font.SourceSansSemibold, TextSize = 16, TextColor3 = self.Theme.Accent, Text = "TARGET TELEMETRY", BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left });
-    -- [FIX] Replaced health bar with a simple text label
     t.healthLabel = Create("TextLabel", { Parent = t.frame, LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 18), Font = Enum.Font.SourceSans, TextSize = 14, TextColor3 = self.Theme.Text, TextXAlignment = Enum.TextXAlignment.Left });
     t.distanceLabel = Create("TextLabel", { Parent = t.frame, LayoutOrder = 3, Size = UDim2.new(1, 0, 0, 18), Font = Enum.Font.SourceSans, TextSize = 14, TextColor3 = self.Theme.Text, TextXAlignment = Enum.TextXAlignment.Left }); t.speedLabel = Create("TextLabel", { Parent = t.frame, LayoutOrder = 4, Size = UDim2.new(1, 0, 0, 18), Font = Enum.Font.SourceSans, TextSize = 14, TextColor3 = self.Theme.Text, TextXAlignment = Enum.TextXAlignment.Left }); t.classLabel = Create("TextLabel", { Parent = t.frame, LayoutOrder = 5, Size = UDim2.new(1, 0, 0, 18), Font = Enum.Font.SourceSans, TextSize = 14, TextColor3 = self.Theme.Text, TextXAlignment = Enum.TextXAlignment.Left }); return t
 end
@@ -66,7 +65,7 @@ function GUILib:Update(state)
         E.radar.coords.Text = string.format("X: %.0f // Y: %.0f // Z: %.0f", state.myPos.X, state.myPos.Y, state.myPos.Z)
         local northVec = state.camCF:VectorToObjectSpace(Vector3.new(0,0,-1)); local radius = RADAR_DIAMETER / 2; E.radar.north.Position = UDim2.new(0.5, northVec.X * radius, 0.5, -northVec.Z * radius)
         
-        -- [FIX] Radar Blip Drawing Logic
+        -- Radar Blip Drawing Logic
         for _, blip in ipairs(radarBlipPool.Active) do blip.Visible = false; table.insert(radarBlipPool.Inactive, blip) end; table.clear(radarBlipPool.Active)
         if state.radarData then
             for _, target in ipairs(state.radarData) do
