@@ -4,11 +4,6 @@
     Author: 1st Research Group 'Stasis λ'
 ]]
 
---[[
-    AZUREUS MARITIME DOMINION // DNCG FUNCTION LIBRARY (REV 2 - PRECISION BALLISTICS)
-    Author: 1st Research Group 'Stasis λ'
-]]
-
 local Funcs = {}
 
 --// CACHED SERVICES & CONSTANTS
