@@ -4,6 +4,11 @@
     Author: 1st Research Group 'Stasis λ'
 ]]
 
+--[[
+    AZUREUS MARITIME DOMINION // DNCG FUNCTION LIBRARY
+    Core logic for Ballistics, Targeting, and Scanning.
+]]
+
 local Funcs = {}
 
 local Players = game:GetService("Players")
@@ -20,55 +25,39 @@ local CONST = {
     GravityVec = Vector3.new(0, NET_ACCEL_Y, 0)
 }
 
---// HELPER: FIND TRUE FIRING ORIGIN
+--// IDENTIFY TURRET POSITION
 function Funcs.GetFiringOrigin(myChar)
     if not myChar then return nil end
     local hum = myChar:FindFirstChild("Humanoid")
     local origin = nil
 
-    -- 1. Default to RootPart
     if myChar:FindFirstChild("HumanoidRootPart") then
         origin = myChar.HumanoidRootPart.Position
     end
 
-    -- 2. If Seated, Check for Main Battery
     if hum and hum.SeatPart then
         local vehicle = hum.SeatPart.Parent
-        origin = hum.SeatPart.Position -- Default to seat if no turret found
+        origin = hum.SeatPart.Position -- Default to seat
         
         if vehicle then
             local seatCF = hum.SeatPart.CFrame
             local bestDist = 0
             
-            -- Scan children for Main Turrets
             for _, child in ipairs(vehicle:GetChildren()) do
-                -- Strict Name Check: "Turret"
-                if child.Name == "Turret" then
+                -- Find Main Battery, Exclude AA
+                if child.Name == "Turret" and not child:FindFirstChild("AA") then
+                    local turretPos = nil
+                    if child:IsA("BasePart") then turretPos = child.Position
+                    elseif child:IsA("Model") then
+                        turretPos = child.PrimaryPart and child.PrimaryPart.Position or child:GetPivot().Position
+                    end
                     
-                    -- Exclude AA Guns (Any turret containing "AA" object)
-                    if not child:FindFirstChild("AA") then
-                        
-                        -- Determine Position (Handle both Model and Part turrets)
-                        local turretPos = nil
-                        if child:IsA("BasePart") then
-                            turretPos = child.Position
-                        elseif child:IsA("Model") then
-                            -- Use PrimaryPart, or Pivot, or first Part found
-                            if child.PrimaryPart then turretPos = child.PrimaryPart.Position
-                            else turretPos = child:GetPivot().Position end
-                        end
-                        
-                        if turretPos then
-                            -- Check relative position to find the Forward Main Battery
-                            -- We convert world pos to object space relative to the seat
-                            local relPos = seatCF:PointToObjectSpace(turretPos)
-                            
-                            -- We assume the main gun is usually Forward (-Z) and slightly Up (+Y)
-                            -- We pick the one furthest forward to ensure barrel clearance
-                            if relPos.Z < 0 and math.abs(relPos.Z) > bestDist then
-                                bestDist = math.abs(relPos.Z)
-                                origin = turretPos
-                            end
+                    if turretPos then
+                        -- Select forward-most turret relative to seat
+                        local relPos = seatCF:PointToObjectSpace(turretPos)
+                        if relPos.Z < 0 and math.abs(relPos.Z) > bestDist then
+                            bestDist = math.abs(relPos.Z)
+                            origin = turretPos
                         end
                     end
                 end
@@ -78,14 +67,14 @@ function Funcs.GetFiringOrigin(myChar)
     return origin
 end
 
---// CORE: SCANNING
+--// SCANNING LOGIC
 function Funcs.Scan(localPlayer, camera, mousePos, mode)
     local bestTarget = nil
     local bestDist = CONST.DistSq.Acquire
     local myTeam = localPlayer.Team
     local camPos = camera.CFrame.Position
 
-    -- 1. PLAYER SCAN
+    -- 1. PLAYERS / PLANES
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= localPlayer and p.Team ~= myTeam and p.Character then
             local root = p.Character:FindFirstChild("HumanoidRootPart")
@@ -119,7 +108,7 @@ function Funcs.Scan(localPlayer, camera, mousePos, mode)
         end
     end
 
-    -- 2. SHIP SCAN (BALLISTIC)
+    -- 2. SHIPS
     if mode == "BALLISTIC" then
         for _, m in ipairs(Workspace:GetChildren()) do
             local teamVal = m:FindFirstChild("Team") 
@@ -152,17 +141,18 @@ function Funcs.Scan(localPlayer, camera, mousePos, mode)
     return bestTarget
 end
 
---// CORE: MATH SOLVER
+--// SOLVER (INCLUDES DYNAMIC LATENCY)
 function Funcs.CalculateAim(myChar, targetTbl, mode)
     if not (myChar and targetTbl.Root) then return nil end
     
-    -- [PARALLAX CORRECTION]
-    -- Finds the specific "Turret" object excluding "AA"
     local origin = Funcs.GetFiringOrigin(myChar)
     if not origin then return nil end
 
     local tPos = targetTbl.Root.Position
     local tVel = targetTbl.Root.AssemblyLinearVelocity
+    
+    -- Network Compensation: Clamp ping to prevent over-prediction on lag spikes
+    local ping = math.clamp(Players.LocalPlayer:GetNetworkPing(), 0.03, 0.5)
 
     if mode == "BALLISTIC" then
         local v = CONST.Velocities.Ship
@@ -172,10 +162,10 @@ function Funcs.CalculateAim(myChar, targetTbl, mode)
         
         local time = (tPos - origin).Magnitude / v
         
-        -- High Precision Iteration (8-pass)
+        -- Iterative Solver (8-Pass)
         for _ = 1, 8 do
             local futurePos = tPos + (tVel * time)
-            futurePos = futurePos + (tVel * 0.06) -- Latency Comp
+            futurePos = futurePos + (tVel * ping) -- Latency Additive
             time = (futurePos - origin).Magnitude / v
         end
         
@@ -184,16 +174,17 @@ function Funcs.CalculateAim(myChar, targetTbl, mode)
         return predPos - drop 
         
     else
-        -- AA / Plane
+        -- Linear Solver (AA/Plane)
         local v = CONST.Velocities.AA
         if mode == "PLANE" and tVel.Magnitude > 350 then tVel = tVel.Unit * 350 end
+        
         local dist = (tPos - origin).Magnitude
-        local time = dist / v
+        local time = (dist / v) + ping -- Latency Additive
         return tPos + (tVel * time)
     end
 end
 
---// UTILITY: VALIDATE & TELEMETRY
+--// UTILITY
 function Funcs.Validate(targetTbl)
     return targetTbl and targetTbl.Root and targetTbl.Root.Parent and targetTbl.Hum and targetTbl.Hum.Health > 0
 end
