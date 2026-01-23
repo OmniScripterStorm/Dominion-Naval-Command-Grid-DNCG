@@ -28,11 +28,13 @@ local function Create(class, properties)
 end
 
 --- Private: Builds the bottom identification bar.
-function GUILib:_buildBottomBar(parent, services)
-    local localPlayer = services.PlayersService.LocalPlayer
+function GUILib:_buildBottomBar(parent)
+    -- [STABILITY FIX] Get services locally to guarantee they exist.
+    local Players = game:GetService("Players")
+    local localPlayer = Players.LocalPlayer
     local b = {}
 
-    b.frame = Create("Frame", { Name = "BottomBar", Parent = parent, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -10), Size = UDim2.new(0.8, 0, 0, 60), BackgroundColor3 = self.Theme.Background, BackgroundTransparency = 0.2, BorderSizePixel = 0, Children = { Create("UIStroke", {Color = self.Theme.Accent}), Create("UICorner", {CornerRadius = UDim.new(0, 4)}) }})
+    b.frame = Create("Frame", { Name = "BottomBar", Parent = parent, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -10), Size = UDim2.new(0.8, 0, 0, 60), BackgroundColor3 = self.Theme.Background, BackgroundTransparency = 0.2, BorderSizePixel = 0, Children = { Create("UIStroke", {Color = self.Theme.Accent}), Create("UICornner", {CornerRadius = UDim.new(0, 4)}) }})
     b.coatOfArms = Create("ImageLabel", { Name = "CoatOfArms", Parent = b.frame, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0), Size = UDim2.fromOffset(40, 40), BackgroundTransparency = 1, Image = "rbxassetid://7374826931" })
     
     local textGroup = Create("Frame", { Name = "TextGroup", Parent = b.frame, BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 60, 0.5, 0), Size = UDim2.new(0, 400, 0, 40), Children = { Create("UIListLayout", {FillDirection = Enum.FillDirection.Vertical, VerticalAlignment = Enum.VerticalAlignment.Center}) }})
@@ -40,7 +42,7 @@ function GUILib:_buildBottomBar(parent, services)
     b.factionNameLabel = Create("TextLabel", { Name = "FactionName", Parent = textGroup, Size = UDim2.new(1, 0, 0, 16), Font = Enum.Font.SourceSans, TextSize = 14, TextColor3 = self.Theme.Accent, Text = "AZUREUS MARITIME DOMINION", BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left })
 
     local userCreds = Create("Frame", { Name = "UserCreds", Parent = b.frame, BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -15, 0.5, 0), Size = UDim2.new(0, 250, 1, 0), Children = { Create("UIListLayout", {FillDirection = Enum.FillDirection.Vertical, VerticalAlignment = Enum.VerticalAlignment.Center, HorizontalAlignment = Enum.HorizontalAlignment.Right}) }})
-    b.userNameLabel = Create("TextLabel", { Name = "UserName", Parent = userCreds, Size = UDim2.new(1, 0, 0, 20), Font = Enum.Font.SourceSansSemibold, TextSize = 18, TextColor3 = self.Theme.Text, Text = localPlayer.DisplayName, BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Right })
+    b.userNameLabel = Create("TextLabel", { Name = "UserName", Parent = userCreds, Size = UDim2.new(1, 0, 0, 20), Font = Enum.Font.SourceSansSemibold, TextSize = 18, TextColor3 = self.Theme.Text, Text = localPlayer and localPlayer.DisplayName or "UNKNOWN", BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Right })
     b.userRankLabel = Create("TextLabel", { Name = "UserRank", Parent = userCreds, Size = UDim2.new(1, 0, 0, 16), Font = Enum.Font.SourceSans, TextSize = 14, TextColor3 = self.Theme.Accent, Text = "FETCHING RANK...", BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Right })
     
     return b
@@ -51,7 +53,7 @@ function GUILib:_buildFireControl(parent)
     local fc = {}
     
     fc.frame = Create("Frame", { Name = "FireControl", Parent = parent, AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -10, 1, -80), Size = UDim2.fromOffset(240, 110), BackgroundColor3 = self.Theme.Background, BackgroundTransparency = 0.2, BorderSizePixel = 0, Children = { Create("UIStroke", {Color = self.Theme.Accent}), Create("UICorner", {CornerRadius = UDim.new(0, 4)}), Create("UIPadding", {PaddingLeft=UDim.new(0,10), PaddingRight=UDim.new(0,10), PaddingTop=UDim.new(0,10), PaddingBottom=UDim.new(0,5)}), Create("UIListLayout", {Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder}) }})
-    local title = Create("TextLabel", { Parent = fc.frame, LayoutOrder = 1, Size = UDim2.new(1,0,0,20), Font = Enum.Font.SourceSansSemibold, TextSize = 16, TextColor3 = self.Theme.Accent, Text = "FIRE CONTROL", BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left })
+    Create("TextLabel", { Parent = fc.frame, LayoutOrder = 1, Size = UDim2.new(1,0,0,20), Font = Enum.Font.SourceSansSemibold, TextSize = 16, TextColor3 = self.Theme.Accent, Text = "FIRE CONTROL", BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left })
     
     fc.statusLabel = Create("TextLabel", { Parent = fc.frame, LayoutOrder = 2, Size = UDim2.new(1,0,0,18), Font = Enum.Font.SourceSans, TextSize = 16, TextColor3 = self.Theme.Text, BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left })
     fc.modeLabel = Create("TextLabel", { Parent = fc.frame, LayoutOrder = 3, Size = UDim2.new(1,0,0,18), Font = Enum.Font.SourceSans, TextSize = 16, TextColor3 = self.Theme.Text, BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left })
@@ -67,7 +69,7 @@ function GUILib:_buildRadar(parent)
     local r = {}
     
     r.panel = Create("Frame", { Name = "RadarPanel", Parent = parent, AnchorPoint = Vector2.new(1,0), Position = UDim2.new(1,-10,0,10), Size = UDim2.fromOffset(RADAR_DIAMETER+20, RADAR_DIAMETER+40), BackgroundColor3 = self.Theme.Background, BackgroundTransparency = 0.2, BorderSizePixel = 0, Children = { Create("UIStroke", {Color = self.Theme.Accent}), Create("UICorner", {CornerRadius = UDim.new(0, 4)}) }})
-    local title = Create("TextLabel", { Parent = r.panel, Position = UDim2.new(0,10,0,5), Size = UDim2.new(1,-20,0,20), Font = Enum.Font.SourceSansSemibold, TextSize = 16, TextColor3 = self.Theme.Accent, Text = "TACTICAL GRID", BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left })
+    Create("TextLabel", { Parent = r.panel, Position = UDim2.new(0,10,0,5), Size = UDim2.new(1,-20,0,20), Font = Enum.Font.SourceSansSemibold, TextSize = 16, TextColor3 = self.Theme.Accent, Text = "TACTICAL GRID", BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left })
     
     r.frame = Create("Frame", { Name = "RadarDisplay", Parent = r.panel, AnchorPoint = Vector2.new(0.5,0), Position = UDim2.new(0.5,0,0,30), Size = UDim2.fromOffset(RADAR_DIAMETER, RADAR_DIAMETER), BackgroundColor3 = self.Theme.Primary, BackgroundTransparency = 0.3, ClipsDescendants = true, Children = { Create("UICorner", {CornerRadius = UDim.new(1, 0)}), Create("UIStroke", {Color = self.Theme.Accent}) }})
     r.north = Create("TextLabel", { Name = "NorthIndicator", Parent = r.frame, AnchorPoint = Vector2.new(0.5,0.5), Size = UDim2.fromOffset(20,20), Font = Enum.Font.SourceSans, TextSize = 16, TextColor3 = self.Theme.Enemy, Text = "N", ZIndex = 2, BackgroundTransparency = 1 })
@@ -82,7 +84,7 @@ function GUILib:_buildTelemetry(parent)
     local t = {}
     
     t.frame = Create("Frame", { Name = "TelemetryFrame", Parent = parent, Visible = false, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0), Size = UDim2.fromOffset(280, 130), BackgroundColor3 = self.Theme.Background, BackgroundTransparency = 0.2, BorderSizePixel = 0, Children = { Create("UIStroke", {Color = self.Theme.Accent}), Create("UICorner", {CornerRadius = UDim.new(0, 4)}), Create("UIPadding", {PaddingLeft=UDim.new(0,10), PaddingTop=UDim.new(0,10), PaddingRight=UDim.new(0,10)}), Create("UIListLayout", {Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder}) }})
-    local title = Create("TextLabel", { Parent = t.frame, LayoutOrder = 1, Size = UDim2.new(1,0,0,20), Font = Enum.Font.SourceSansSemibold, TextSize = 16, TextColor3 = self.Theme.Accent, Text = "TARGET TELEMETRY", BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left })
+    Create("TextLabel", { Parent = t.frame, LayoutOrder = 1, Size = UDim2.new(1,0,0,20), Font = Enum.Font.SourceSansSemibold, TextSize = 16, TextColor3 = self.Theme.Accent, Text = "TARGET TELEMETRY", BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left })
     
     local healthFrame = Create("Frame", { Parent = t.frame, LayoutOrder = 2, Size=UDim2.new(1,0,0,20), BackgroundTransparency=1, Children = {Create("UIListLayout", {FillDirection=Enum.FillDirection.Horizontal, VerticalAlignment=Enum.VerticalAlignment.Center, Padding=UDim.new(0,5)})} })
     Create("TextLabel", { Parent = healthFrame, Size=UDim2.fromOffset(60,20), Text="HEALTH", Font = Enum.Font.SourceSans, TextSize = 14, TextColor3 = self.Theme.Text, BackgroundTransparency = 1 })
@@ -105,11 +107,11 @@ function GUILib:Build(services)
     
     self.Elements = {
         mainGui = mainGui,
-        bottomBar = self:_buildBottomBar(mainGui, services),
+        bottomBar = self:_buildBottomBar(mainGui),
         fc = self:_buildFireControl(mainGui),
         radar = self:_buildRadar(mainGui),
         telemetry = self:_buildTelemetry(mainGui),
-        draw = {} -- For Drawing objects if needed later
+        draw = {} 
     }
 
     print("DNCG GUI Library Initialized and Built.")
@@ -121,13 +123,11 @@ function GUILib:Update(state)
     if not self.Elements then return end
     local E = self.Elements
     
-    -- Update Fire Control
     E.fc.statusLabel.Text = state.enabled and "SYSTEM: ONLINE" or "SYSTEM: OFFLINE"
     E.fc.statusLabel.TextColor3 = state.enabled and self.Theme.Self or self.Theme.Enemy
-    E.fc.modeLabel.Text = "MODE: " .. state.mode
+    E.fc.modeLabel.Text = "MODE: " .. (state.mode or "UNKNOWN")
     E.fc.targetLabel.Text = "TARGET: " .. (state.targetName or "NONE")
 
-    -- Update Radar
     if state.myPos and state.camCF then
         E.radar.coords.Text = string.format("X: %.0f // Y: %.0f // Z: %.0f", state.myPos.X, state.myPos.Y, state.myPos.Z)
         local northVec = state.camCF:VectorToObjectSpace(Vector3.new(0,0,-1))
@@ -135,7 +135,6 @@ function GUILib:Update(state)
         E.radar.north.Position = UDim2.new(0.5, northVec.X * radius, 0.5, -northVec.Z * radius)
     end
     
-    -- Update Telemetry
     local hasTarget = state.targetName and state.targetName ~= "NONE"
     E.telemetry.frame.Visible = hasTarget
     if hasTarget then
@@ -145,7 +144,6 @@ function GUILib:Update(state)
         E.telemetry.classLabel.Text = "CLASS: " .. (state.targetClass or "UNKNOWN"):upper()
     end
     
-    -- Update Rank (Can be run less frequently in main script)
     if state.userRank then
         E.bottomBar.userRankLabel.Text = state.userRank
     end
