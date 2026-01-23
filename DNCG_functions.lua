@@ -19,8 +19,116 @@ local CONST = {
     GravityVec = Vector3.new(0, NET_ACCEL_Y, 0)
 }
 
+local ATS_CONST = {
+    MAX_RANGE = 2500,
+    RANGE_SCALER = 500
+}
+
+local BTV_MATRIX = {
+    ["Hijacker"] = 1.00,
+    ["Heavy Bomber"] = 0.90,
+    ["Torpedo Bomber"] = 0.80,
+    ["Bomber"] = 0.75,
+    ["Carrier"] = 0.65,
+    ["Battleship"] = 0.65,
+    ["Heavy Cruiser"] = 0.50,
+    ["Cruiser"] = 0.50,
+    ["Destroyer"] = 0.50,
+    ["Submarine"] = 0.40,
+    ["Player"] = 0.40, -- Default Player/Infantry
+    ["Ship"] = 0.40    -- Default Ship/Unclassified
+}
+
 function Funcs.Validate(targetTbl)
     return targetTbl and targetTbl.Root and targetTbl.Root.Parent and targetTbl.Hum and targetTbl.Hum.Health > 0
+end
+
+-- Calculates the A.T.S. Heuristic Threat Score
+function Funcs.CalculateATSThreat(myRoot, targetTbl)
+    local root = targetTbl.Root
+    local dist = (myRoot.Position - root.Position).Magnitude
+
+    if dist > ATS_CONST.MAX_RANGE then return 0 end
+
+    -- Determine Base Threat Value (BTV)
+    local baseType = targetTbl.Type
+    local nameMatch = string.match(targetTbl.Name, "(%a+)")
+
+    -- Hijacker Overrule (Any player within 50 studs)
+    if baseType == "Player" and dist <= 50 then
+        baseType = "Hijacker"
+    elseif baseType == "Ship" and nameMatch and BTV_MATRIX[nameMatch] then
+        baseType = nameMatch
+    end
+
+    local btv = BTV_MATRIX[baseType] or BTV_MATRIX["Ship"]
+
+    -- Distance Multiplier (DM) = 1.0 + (MaxRange - Distance) / RangeScaler
+    local dm = 1.0 + (ATS_CONST.MAX_RANGE - dist) / ATS_CONST.RANGE_SCALER
+
+    return btv * dm
+end
+
+-- ScanAllTargets is necessary for A.T.S. map coverage
+function Funcs.ScanAllTargets(localPlayer)
+    local allTargets = {}
+    local myTeam = localPlayer.Team
+    local myPos = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") and localPlayer.Character.HumanoidRootPart.Position
+
+    if not myPos then return allTargets end
+
+    -- 1. Player Scan (for AA/Plane/Hijackers)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= localPlayer and p.Team ~= myTeam and p.Character then
+            local root = p.Character:FindFirstChild("HumanoidRootPart")
+            local hum = p.Character:FindFirstChild("Humanoid")
+            
+            if root and hum and hum.Health > 0 then
+                local isPlane = false
+                local seat = hum.SeatPart
+                if seat and seat.Parent then
+                    local vName = seat.Parent.Name
+                    if vName:find("Bomber") or vName:find("Plane") then isPlane = true end
+                    -- Attempt to classify Plane types for BTV
+                    if vName:find("Heavy Bomber") then
+                        vName = "Heavy Bomber"
+                    elseif vName:find("Torpedo") then
+                        vName = "Torpedo Bomber"
+                    else
+                        vName = "Bomber"
+                    end
+                end
+
+                table.insert(allTargets, {
+                    Root = root, Hum = hum, Name = p.Name, 
+                    Type = isPlane and vName or "Player"
+                })
+            end
+        end
+    end
+
+    -- 2. Ship Scan (for Capital/Cruiser/Destroyer)
+    for _, m in ipairs(Workspace:GetChildren()) do
+        local teamVal = m:FindFirstChild("Team")
+        if teamVal and teamVal.Value ~= myTeam.Name then
+            local hp = m:FindFirstChild("HP")
+            if hp and hp.Value > 0 then
+                local root = m.PrimaryPart or m:FindFirstChild("Base") or m:FindFirstChild("Hull")
+                if root then
+                    -- Ship type is extracted from Name (e.g., "Battleship-Name")
+                    local shipClass = string.match(m.Name, "(%a+)") 
+                    table.insert(allTargets, {
+                        Root = root,
+                        Hum = {Health = hp.Value, MaxHealth = m:FindFirstChild("MaxHP") and m.MaxHP.Value or 100},
+                        Name = m.Name,
+                        Type = shipClass or "Ship"
+                    })
+                end
+            end
+        end
+    end
+
+    return allTargets
 end
 
 -- Scans for the single target under the cursor
