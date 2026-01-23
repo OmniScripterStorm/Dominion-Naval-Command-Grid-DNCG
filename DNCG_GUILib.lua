@@ -34,7 +34,7 @@ function GUILib:_buildBottomBar(parent)
     local localPlayer = Players.LocalPlayer
     local b = {}
 
-    b.frame = Create("Frame", { Name = "BottomBar", Parent = parent, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -10), Size = UDim2.new(0.8, 0, 0, 60), BackgroundColor3 = self.Theme.Background, BackgroundTransparency = 0.2, BorderSizePixel = 0, Children = { Create("UIStroke", {Color = self.Theme.Accent}), Create("UICornner", {CornerRadius = UDim.new(0, 4)}) }})
+    b.frame = Create("Frame", { Name = "BottomBar", Parent = parent, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -10), Size = UDim2.new(0.8, 0, 0, 60), BackgroundColor3 = self.Theme.Background, BackgroundTransparency = 0.2, BorderSizePixel = 0, Children = { Create("UIStroke", {Color = self.Theme.Accent}), Create("UICorner", {CornerRadius = UDim.new(0, 4)}) }})
     b.coatOfArms = Create("ImageLabel", { Name = "CoatOfArms", Parent = b.frame, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0), Size = UDim2.fromOffset(40, 40), BackgroundTransparency = 1, Image = "rbxassetid://7374826931" })
     
     local textGroup = Create("Frame", { Name = "TextGroup", Parent = b.frame, BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 60, 0.5, 0), Size = UDim2.new(0, 400, 0, 40), Children = { Create("UIListLayout", {FillDirection = Enum.FillDirection.Vertical, VerticalAlignment = Enum.VerticalAlignment.Center}) }})
