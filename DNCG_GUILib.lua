@@ -59,7 +59,19 @@ end
 
 function GUILib:Update(state)
     if not self.Elements then return end; local E = self.Elements
-    E.fc.statusLabel.Text = state.enabled and "SYSTEM: ONLINE" or "SYSTEM: OFFLINE"; E.fc.statusLabel.TextColor3 = state.enabled and self.Theme.Self or self.Theme.Enemy; E.fc.modeLabel.Text = "MODE: " .. (state.mode or "UNKNOWN"); E.fc.targetLabel.Text = "TARGET: " .. (state.targetName or "NONE")
+    
+    E.fc.statusLabel.Text = state.enabled and "SYSTEM: ONLINE" or "SYSTEM: OFFLINE"; E.fc.statusLabel.TextColor3 = state.enabled and self.Theme.Self or self.Theme.Enemy
+    
+    -- [NEW: ATS STATUS DISPLAY]
+    if state.atsActive then
+        E.fc.modeLabel.Text = "MODE: A.T.S. ACTIVE"
+        E.fc.modeLabel.TextColor3 = self.Theme.Locked -- Lime Green
+    else
+        E.fc.modeLabel.Text = "MODE: " .. (state.mode or "UNKNOWN")
+        E.fc.modeLabel.TextColor3 = self.Theme.Text -- Standard Text
+    end
+    
+    E.fc.targetLabel.Text = "TARGET: " .. (state.targetName or "NONE")
     
     if state.myPos and state.camCF then
         E.radar.coords.Text = string.format("X: %.0f // Y: %.0f // Z: %.0f", state.myPos.X, state.myPos.Y, state.myPos.Z)
