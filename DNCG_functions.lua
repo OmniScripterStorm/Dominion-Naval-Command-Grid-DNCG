@@ -20,11 +20,11 @@ local CONST = {
 }
 
 local ATS_CONST = {
-    MAX_RANGE = 2500,
-    RANGE_SCALER = 250,
+    MAX_RANGE_FULL = 2500,
+    MAX_RANGE_PARTIAL = 500,
+    RANGE_SCALER = 250, 
     VERTICAL_ENGAGEMENT_LIMIT = -100
 }
-
 
 local BTV_MATRIX = {
     ["Hijacker"] = 1.00,
@@ -46,27 +46,31 @@ function Funcs.Validate(targetTbl)
 end
 
 -- Calculates the A.T.S. Heuristic Threat Score
-function Funcs.CalculateATSThreat(myRoot, targetTbl)
+function Funcs.CalculateATSThreat(myRoot, targetTbl, atsMode)
     local root = targetTbl.Root
     local dist = (myRoot.Position - root.Position).Magnitude
-
-    if dist > ATS_CONST.MAX_RANGE then return 0 end
-
-    -- Determine Base Threat Value (BTV)
     local baseType = targetTbl.Type
-    local nameMatch = string.match(targetTbl.Name, "(%a+)")
 
-    -- Hijacker Overrule (Any player within 50 studs)
-    if baseType == "Player" and dist <= 50 then
-        baseType = "Hijacker"
-    elseif baseType == "Ship" and nameMatch and BTV_MATRIX[nameMatch] then
-        baseType = nameMatch
+    local maxRange = ATS_CONST.MAX_RANGE_FULL
+
+    -- Filter 1: Mode-specific targeting and range
+    if atsMode == 2 or atsMode == 3 then -- Anti-Air / Partial
+        local isAir = baseType:find("Bomber") or baseType == "Player" -- Player needed for Hijacker rule
+        
+        if not isAir then return 0 end -- Ignore all ships
+        if atsMode == 3 then maxRange = ATS_CONST.MAX_RANGE_PARTIAL end -- Set to 500 studs
     end
 
-    local btv = BTV_MATRIX[baseType] or BTV_MATRIX["Ship"]
+    if dist > maxRange then return 0 end
 
-    -- Distance Multiplier (DM) = 1.0 + (MaxRange - Distance) / RangeScaler
-    local dm = 1.0 + (ATS_CONST.MAX_RANGE - dist) / ATS_CONST.RANGE_SCALER
+    local btv = BTV_MATRIX[targetTbl.Type] or BTV_MATRIX["Ship"]
+    
+    if baseType == "Player" and dist <= 50 then
+        btv = BTV_MATRIX["Hijacker"]
+    end
+    
+    -- Distance Multiplier (DM)
+    local dm = 1.0 + (maxRange - dist) / ATS_CONST.RANGE_SCALER
 
     return btv * dm
 end
