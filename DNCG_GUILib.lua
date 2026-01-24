@@ -62,14 +62,25 @@ function GUILib:Update(state)
     
     E.fc.statusLabel.Text = state.enabled and "SYSTEM: ONLINE" or "SYSTEM: OFFLINE"; E.fc.statusLabel.TextColor3 = state.enabled and self.Theme.Self or self.Theme.Enemy
     
-    -- [NEW: ATS STATUS DISPLAY]
-    if state.atsActive then
-        E.fc.modeLabel.Text = "MODE: A.T.S. ACTIVE"
-        E.fc.modeLabel.TextColor3 = self.Theme.Locked -- Lime Green
+    -- [NEW: ATS STATUS DISPLAY LOGIC]
+    local modeText = (state.mode or "UNKNOWN")
+    local modeColor = self.Theme.Text
+    
+    if state.atsMode == 1 then
+        modeText = "MODE: A.T.S. FULL"
+        modeColor = self.Theme.Locked
+    elseif state.atsMode == 2 then
+        modeText = "MODE: A.T.S. ANTI-AIR"
+        modeColor = self.Theme.Locked
+    elseif state.atsMode == 3 then
+        modeText = "MODE: A.T.S. PARTIAL"
+        modeColor = self.Theme.Locked
     else
-        E.fc.modeLabel.Text = "MODE: " .. (state.mode or "UNKNOWN")
-        E.fc.modeLabel.TextColor3 = self.Theme.Text -- Standard Text
+        modeText = "MODE: " .. modeText -- Manual FCS Mode
     end
+
+    E.fc.modeLabel.Text = modeText
+    E.fc.modeLabel.TextColor3 = modeColor
     
     E.fc.targetLabel.Text = "TARGET: " .. (state.targetName or "NONE")
     
